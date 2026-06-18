@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>법인카드 영수증 관리</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --primary: #4361ee;
+  --primary-light: #eef0fd;
+  --green: #10b981;
+  --green-light: #f0fdf4;
+  --red: #ef4444;
+  --border: #e5e7eb;
+  --text: #111827;
+  --muted: #6b7280;
+  --bg: #f3f4f6;
+  --card: #ffffff;
+}
+body { font-family: 'Apple SD Gothic Neo', 'Pretendard', 'Malgun Gothic', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; }
+
+/* ── Header ── */
+.header { background: #1e2235; color: #fff; padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; position: sticky; top: 0; z-index: 100; }
+.header h1 { font-size: 16px; font-weight: 700; white-space: nowrap; }
+.header-sub { font-size: 11px; color: #8892a4; }
+.header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.icon-btn { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #c9d1e0; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: all .2s; white-space: nowrap; }
+.icon-btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+.icon-btn.ok { border-color: rgba(16,185,129,.5); color: #34d399; }
+
+/* ── Layout ── */
+.layout { display: grid; grid-template-columns: 380px 1fr; gap: 20px; padding: 20px; max-width: 1300px; margin: 0 auto; }
+@media(max-width:860px){ .layout { grid-template-columns: 1fr; } }
+
+/* ── Card ── */
+.card { background: var(--card); border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.07); }
+.card-head { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+.card-head h2 { font-size: 14px; font-weight: 700; }
+.card-head .badge { margin-left: auto; background: var(--bg); color: var(--muted); font-size: 11px; padding: 2px 8px; border-radius: 20px; }
+.card-body { padding: 16px 18px; }
+
+/* ── Upload ── */
+.drop-zone { border: 2px dashed #d1d5db; border-radius: 10px; min-height: 160px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; cursor: pointer; transition: all .2s; text-align: center; padding: 20px; position: relative; }
+.drop-zone:hover, .drop-zone.over { border-color: var(--primary); background: var(--primary-light); }
+.drop-zone .dz-icon { font-size: 36px; }
+.drop-zone p { color: var(--muted); font-size: 13px; }
+.drop-zone small { color: #9ca3af; font-size: 12px; }
+.drop-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+.preview-wrap { position: relative; }
+.preview-wrap img { width: 100%; max-height: 280px; object-fit: contain; border-radius: 8px; background: #f8f9fa; display: block; }
+.preview-overlay { position: absolute; top: 6px; right: 6px; display: flex; gap: 4px; }
+
+.ocr-bar { margin-top: 10px; padding: 9px 12px; border-radius: 8px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.ocr-bar.idle { background: var(--bg); color: var(--muted); }
+.ocr-bar.loading { background: #eff6ff; color: #2563eb; }
+.ocr-bar.done { background: var(--green-light); color: #065f46; }
+.ocr-bar.err { background: #fef2f2; color: #991b1b; }
+.spin { width: 14px; height: 14px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; flex-shrink: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.upload-btns { display: flex; gap: 8px; margin-top: 10px; }
+
+/* ── Buttons ── */
+.btn { display: inline-flex; align-items: center; gap: 5px; padding: 8px 14px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: all .2s; font-family: inherit; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:not(:disabled):hover { background: #3451d1; }
+.btn-secondary { background: var(--card); color: var(--primary); border: 1.5px solid var(--primary); }
+.btn-secondary:hover { background: var(--primary-light); }
+.btn-ghost { background: var(--bg); color: var(--muted); }
+.btn-ghost:hover { color: var(--red); background: #fef2f2; }
+.btn-green { background: var(--green); color: #fff; }
+.btn-green:not(:disabled):hover { background: #059669; }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+.btn-full { width: 100%; justify-content: center; }
+
+/* ── Form ── */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.fg { display: flex; flex-direction: column; gap: 4px; }
+.fg.full { grid-column: 1/-1; }
+label { font-size: 11px; font-weight: 700; color: #374151; text-transform: uppercase; letter-spacing: .3px; }
+label .req { color: var(--red); }
+input[type=text], input[type=date], input[type=number], select, textarea {
+  border: 1.5px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 14px; width: 100%;
+  outline: none; font-family: inherit; color: var(--text); background: #fff; transition: border-color .2s;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(67,97,238,.1); }
+.autofill { background: #f5f8ff; border-color: #a5b4fc; }
+textarea { min-height: 54px; resize: vertical; }
+.form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+
+/* ── Table section ── */
+.table-section { grid-column: 1/-1; }
+.table-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.filters { display: flex; gap: 8px; flex-wrap: wrap; }
+.filters select { border: 1.5px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 13px; background: #fff; outline: none; cursor: pointer; }
+.stats { display: flex; gap: 12px; margin-left: auto; }
+.stat { background: var(--bg); padding: 4px 12px; border-radius: 20px; font-size: 13px; color: var(--muted); }
+.stat strong { color: var(--text); }
+
+.tbl-wrap { overflow-x: auto; margin-top: 14px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; white-space: nowrap; }
+th { padding: 9px 12px; background: #f9fafb; border-bottom: 2px solid var(--border); font-weight: 700; color: #374151; text-align: left; }
+td { padding: 8px 12px; border-bottom: 1px solid #f3f4f6; color: #4b5563; }
+tr:hover td { background: #fafbff; }
+.thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; }
+.thumb-placeholder { width: 44px; height: 44px; background: var(--bg); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+.amt { font-weight: 700; text-align: right; }
+.chip { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+.chip-blue { background: #eff6ff; color: #2563eb; }
+.chip-green { background: var(--green-light); color: #065f46; }
+.empty { text-align: center; padding: 48px; color: #9ca3af; font-size: 14px; }
+
+/* ── Modals ── */
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; z-index: 500; padding: 16px; }
+.overlay.show { display: flex; }
+.modal { background: #fff; border-radius: 14px; width: 100%; max-width: 440px; overflow: hidden; }
+.modal-head { padding: 18px 20px 14px; border-bottom: 1px solid var(--border); }
+.modal-head h3 { font-size: 16px; font-weight: 700; }
+.modal-head p { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.6; }
+.modal-body { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.modal-foot { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+.field-label { font-size: 11px; font-weight: 700; color: #374151; margin-bottom: 4px; display: block; }
+.modal input { border: 1.5px solid var(--border); border-radius: 8px; padding: 9px 12px; font-size: 14px; width: 100%; outline: none; font-family: inherit; }
+.modal input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(67,97,238,.1); }
+.hint { font-size: 11px; color: var(--muted); line-height: 1.6; background: var(--bg); padding: 10px 12px; border-radius: 8px; }
+
+/* Camera */
+.cam-modal { background: #fff; border-radius: 14px; width: 100%; max-width: 500px; padding: 18px; }
+.cam-modal h3 { font-size: 15px; font-weight: 700; margin-bottom: 12px; }
+video { width: 100%; border-radius: 8px; background: #000; max-height: 360px; object-fit: cover; }
+canvas { display: none; }
+.cam-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+
+/* Image lightbox */
+.lightbox { position: fixed; inset: 0; background: rgba(0,0,0,.88); display: none; align-items: center; justify-content: center; z-index: 999; cursor: zoom-out; }
+.lightbox.show { display: flex; }
+.lightbox img { max-width: 95vw; max-height: 95vh; border-radius: 8px; object-fit: contain; }
+
+/* Upload progress */
+.progress-wrap { margin-top: 8px; display: none; }
+.progress-bar { height: 4px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--primary); transition: width .3s; width: 0; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>📄 법인카드 영수증 관리</h1>
+    <div class="header-sub">사회적가치연구원 사업비 집행 내역</div>
+  </div>
+  <div class="header-actions">
+    <button class="icon-btn" id="sbBtn" onclick="openSettings()">⚙ 설정</button>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- LEFT: 업로드 + 폼 -->
+  <div style="display:flex;flex-direction:column;gap:20px">
+
+    <!-- Upload Card -->
+    <div class="card">
+      <div class="card-head"><span>📸</span><h2>영수증 업로드</h2></div>
+      <div class="card-body">
+        <div id="dropZone" class="drop-zone" ondragover="onDragOver(event)" ondrop="onDrop(event)" ondragleave="onDragLeave()">
+          <div class="dz-icon">🧾</div>
+          <p>클릭하거나 영수증을 여기 드래그</p>
+          <small>JPG · PNG · HEIC · PDF</small>
+          <input type="file" accept="image/*,application/pdf" id="fileInput" onchange="onFileSelect(event)">
+        </div>
+
+        <div id="previewWrap" class="preview-wrap" style="display:none">
+          <img id="previewImg" src="" alt="영수증">
+          <div class="preview-overlay">
+            <button class="btn btn-sm btn-ghost" onclick="clearImage()">✕</button>
+          </div>
+        </div>
+
+        <div class="progress-wrap" id="progressWrap">
+          <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        </div>
+
+        <div class="upload-btns">
+          <button class="btn btn-secondary btn-sm" style="flex:1" onclick="document.getElementById('fileInput').click()">📁 파일 선택</button>
+          <button class="btn btn-secondary btn-sm" style="flex:1" onclick="openCamera()">📷 카메라 촬영</button>
+          <button class="btn btn-primary btn-sm" id="ocrBtn" onclick="runOCR()" style="flex:1.2" disabled>🔍 자동 인식</button>
+        </div>
+        <div class="ocr-bar idle" id="ocrBar" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- Form Card -->
+    <div class="card">
+      <div class="card-head"><span>✏️</span><h2>지출 내역 입력</h2></div>
+      <div class="card-body">
+        <div class="form-grid">
+          <div class="fg">
+            <label>날짜 <span class="req">*</span></label>
+            <input type="date" id="f_date">
+          </div>
+          <div class="fg">
+            <label>금액(원) <span class="req">*</span></label>
+            <input type="number" id="f_amount" placeholder="0" min="0">
+          </div>
+          <div class="fg full">
+            <label>가맹점명 <span class="req">*</span></label>
+            <input type="text" id="f_vendor" placeholder="가맹점명">
+          </div>
+          <div class="fg">
+            <label>실(Lab) <span class="req">*</span></label>
+            <select id="f_lab" onchange="onLabChange()">
+              <option value="">-- 선택 --</option>
+              <option value="D-Lab">D-Lab</option>
+              <option value="S-Lab">S-Lab</option>
+              <option value="V-Lab">V-Lab</option>
+              <option value="연구기획팀">연구기획팀</option>
+              <option value="통합사무국">통합사무국(홍보)</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>담당팀 <span class="req">*</span></label>
+            <select id="f_team" onchange="onTeamChange()">
+              <option value="">-- 실 선택 후 --</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>항목(중분류) <span class="req">*</span></label>
+            <select id="f_category" onchange="onCategoryChange()">
+              <option value="">-- 담당팀 선택 후 --</option>
+            </select>
+          </div>
+          <div class="fg">
+            <label>프로그램</label>
+            <select id="f_program">
+              <option value="">-- 항목 선택 후 --</option>
+            </select>
+          </div>
+          <div class="fg full">
+            <label>내용/품목</label>
+            <input type="text" id="f_desc" placeholder="지출 내용">
+          </div>
+          <div class="fg full">
+            <label>비고</label>
+            <textarea id="f_note" placeholder="추가 메모"></textarea>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-ghost btn-sm" onclick="resetForm()">초기화</button>
+          <button class="btn btn-green" id="submitBtn" onclick="submitReceipt()">✓ 내역 등록</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Table -->
+  <div class="card" style="align-self:start">
+    <div class="card-head">
+      <span>📊</span><h2>집행 내역</h2>
+      <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="exportCSV()">⬇ CSV</button>
+    </div>
+    <div class="card-body">
+      <div class="table-toolbar">
+        <div class="filters">
+          <select id="fLab" onchange="loadReceipts()">
+            <option value="">전체 실</option>
+            <option value="D-Lab">D-Lab</option>
+            <option value="S-Lab">S-Lab</option>
+            <option value="V-Lab">V-Lab</option>
+            <option value="연구기획팀">연구기획팀</option>
+            <option value="통합사무국">통합사무국</option>
+          </select>
+          <select id="fCat" onchange="loadReceipts()">
+            <option value="">전체 항목</option>
+            <option value="복리후생비">복리후생비</option>
+          </select>
+        </div>
+        <div class="stats">
+          <div class="stat">총 <strong id="statCount">0</strong>건</div>
+          <div class="stat">합계 <strong id="statAmt">0</strong>원</div>
+        </div>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>영수증</th>
+              <th>날짜</th>
+              <th>가맹점</th>
+              <th>실 / 팀</th>
+              <th>항목</th>
+              <th>프로그램</th>
+              <th>내용</th>
+              <th>금액</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="tBody"></tbody>
+        </table>
+        <div class="empty" id="emptyState">등록된 내역이 없습니다</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Settings Modal -->
+<div class="overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>⚙ 연결 설정</h3>
+      <p>설정값은 이 기기 브라우저에만 저장됩니다</p>
+    </div>
+    <div class="modal-body">
+      <div>
+        <span class="field-label">Claude API 키 (OCR 자동인식용)</span>
+        <input type="password" id="inp_claude" placeholder="sk-ant-api03-...">
+      </div>
+      <div>
+        <span class="field-label">Supabase Project URL</span>
+        <input type="text" id="inp_sburl" placeholder="https://xxxx.supabase.co">
+      </div>
+      <div>
+        <span class="field-label">Supabase Anon Key</span>
+        <input type="password" id="inp_sbkey" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+      </div>
+      <div class="hint">
+        💡 <strong>Supabase 설정 방법</strong><br>
+        1. supabase.com → 새 프로젝트 생성<br>
+        2. SQL Editor에서 아래 쿼리 실행 (설정 완료 후 복사)<br>
+        3. Storage → New Bucket → <code>receipts</code> (Public)<br>
+        4. Project Settings → API에서 URL과 anon key 복사
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="copySQL()" style="align-self:start">📋 SQL 쿼리 복사</button>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeSettings()">취소</button>
+      <button class="btn btn-primary" onclick="saveSettings()">저장 및 연결</button>
+    </div>
+  </div>
+</div>
+
+<!-- Camera Modal -->
+<div class="overlay" id="cameraModal">
+  <div class="cam-modal">
+    <h3>📷 카메라로 영수증 촬영</h3>
+    <video id="camVideo" autoplay playsinline muted></video>
+    <canvas id="camCanvas"></canvas>
+    <div class="cam-actions">
+      <button class="btn btn-ghost" onclick="closeCamera()">취소</button>
+      <button class="btn btn-primary" onclick="capturePhoto()">📸 촬영</button>
+    </div>
+  </div>
+</div>
+
+<!-- Image Lightbox -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <img id="lightboxImg" src="" alt="">
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════════════════
+const DATA = {
+  'D-Lab': {
+    teams: ['거래화팀', '제도화'],
+    '거래화팀': {
+      categories: ['SV거래화연구', 'SV글로벌확산', '복리후생비'],
+      programs: {
+        'SV거래화연구': ['OBF 일반화 연구', 'SV거래화 이론개발 연구', 'WEF 공동연구'],
+        'SV글로벌확산': ['SV거래화 글로벌 확산 연구'],
+        '복리후생비': ['복리후생비']
+      }
+    },
+    '제도화': {
+      categories: ['SV기초연구', 'SV제도화연구', 'SV글로벌확산', '복리후생비'],
+      programs: {
+        'SV기초연구': ['TM 저서 및 미디어 확산', 'SV서베이 연구', 'SPC Survey'],
+        'SV제도화연구': ['OBF 지표 국제화 연구', 'SV법제화/정책화 연구', '측정시스템 AI 개발 연구', 'SV 확산 연구', '지자체 협력사업'],
+        'SV글로벌확산': ['OBF 지표 국제화 연구'],
+        '복리후생비': ['복리후생비']
+      }
+    }
+  },
+  'S-Lab': {
+    teams: ['EPC팀', 'SPC팀'],
+    'EPC팀': {
+      categories: ['EPC 연구/확산', '복리후생비'],
+      programs: {
+        'EPC 연구/확산': ['EPC 메커니즘 및 적용방안 연구', 'EPC 파트너십 연구'],
+        '복리후생비': ['복리후생비']
+      }
+    },
+    'SPC팀': {
+      categories: ['SPC기금', 'SPC운영', 'SPC운영/기획', '복리후생비'],
+      programs: {
+        'SPC기금': ['SPC기금'],
+        'SPC운영': ['SPC 측정 및 협력사업', 'SPC 측정시스템 / 웹페이지운영'],
+        'SPC운영/기획': ['SPC 운영/기획'],
+        '복리후생비': ['복리후생비']
+      }
+    }
+  },
+  'V-Lab': {
+    teams: ['SV회계연구팀', '측정센터'],
+    'SV회계연구팀': {
+      categories: ['SV활용연구', 'SV회계연구', '복리후생비'],
+      programs: {
+        'SV활용연구': ['SV활용 매커니즘 연구', 'SV-EV Linked 연구'],
+        'SV회계연구': ['통합재무보고 연구', 'SV보고 고도화 연구'],
+        '복리후생비': ['복리후생비']
+      }
+    },
+    '측정센터': {
+      categories: ['DBL고도화', 'DBL확산', '복리후생비'],
+      programs: {
+        'DBL고도화': ['SV 간행물 발간(가이드북 등)', '측정방법론 연구', 'SV Library 시스템 운영/보완/관리'],
+        'DBL확산': ['국내외 DBL SV측정 연계', 'CSR 프로그램 측정 지원', 'SV관련 포럼', 'CSR 성과 측정/평가 플랫폼 구축'],
+        '복리후생비': ['복리후생비']
+      }
+    }
+  },
+  '연구기획팀': {
+    teams: ['연구기획팀'],
+    '연구기획팀': {
+      categories: ['연구기획', 'ESG연구', 'SV 학술연구/지원', '복리후생비'],
+      programs: {
+        '연구기획': ['AI활용 관련 연구', 'SV페스타', '연구지원'],
+        'ESG연구': ['AI활용 관련 연구'],
+        'SV 학술연구/지원': ['연구지원', 'SV거래화 글로벌 확산 연구'],
+        '복리후생비': ['복리후생비']
+      }
+    }
+  },
+  '통합사무국': {
+    teams: ['통합사무국(홍보)'],
+    '통합사무국(홍보)': {
+      categories: ['홍보', '홍보인프라', '복리후생비'],
+      programs: {
+        '홍보': ['SNS 콘텐츠 제작 운영', '대내 홍보 콘텐츠 제작', '대외 홍보 콘텐츠 제작'],
+        '홍보인프라': ['SV 허브 플랫폼 및 홈페이지 개발 운영'],
+        '복리후생비': ['복리후생비']
+      }
+    }
+  }
+};
+
+const SQL_SETUP = `-- 1. receipts 테이블 생성
+create table receipts (
+  id bigint generated by default as identity primary key,
+  created_at timestamptz default now(),
+  date date not null,
+  vendor text not null,
+  amount integer not null,
+  lab text not null,
+  team text not null,
+  category text not null,
+  program text,
+  description text,
+  note text,
+  image_url text
+);
+
+-- 2. RLS 활성화 (내부 도구용 전체 허용)
+alter table receipts enable row level security;
+create policy "allow_all" on receipts for all using (true) with check (true);
+
+-- 3. Storage 정책 (Storage > Policies에서 receipts 버킷 선택 후 실행)
+create policy "allow_upload" on storage.objects for insert with check (bucket_id = 'receipts');
+create policy "allow_read" on storage.objects for select using (bucket_id = 'receipts');
+create policy "allow_delete" on storage.objects for delete using (bucket_id = 'receipts');`;
+
+// ═══════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════
+let sb = null;
+let currentFile = null;
+let currentB64 = null;
+let currentMime = 'image/jpeg';
+let camStream = null;
+
+// ═══════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════
+window.onload = () => {
+  document.getElementById('f_date').value = today();
+  initSupabase();
+};
+
+function today() { return new Date().toISOString().slice(0, 10); }
+
+function initSupabase() {
+  const url = ls('sb_url'), key = ls('sb_key');
+  if (url && key) {
+    sb = supabase.createClient(url, key);
+    document.getElementById('sbBtn').classList.add('ok');
+    document.getElementById('sbBtn').textContent = '✓ 연결됨';
+    loadReceipts();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// SETTINGS
+// ═══════════════════════════════════════════════════════════
+function openSettings() {
+  document.getElementById('inp_claude').value = ls('claude_key') || '';
+  document.getElementById('inp_sburl').value = ls('sb_url') || '';
+  document.getElementById('inp_sbkey').value = ls('sb_key') || '';
+  document.getElementById('settingsModal').classList.add('show');
+}
+function closeSettings() { document.getElementById('settingsModal').classList.remove('show'); }
+
+function saveSettings() {
+  const claude = document.getElementById('inp_claude').value.trim();
+  const url = document.getElementById('inp_sburl').value.trim();
+  const key = document.getElementById('inp_sbkey').value.trim();
+  if (claude) lsSet('claude_key', claude);
+  if (url) lsSet('sb_url', url);
+  if (key) lsSet('sb_key', key);
+  closeSettings();
+  initSupabase();
+  alert('저장했습니다.');
+}
+
+function copySQL() {
+  navigator.clipboard.writeText(SQL_SETUP).then(() => alert('SQL 쿼리가 복사되었습니다!\nSupabase SQL Editor에 붙여넣고 실행하세요.'));
+}
+
+// ═══════════════════════════════════════════════════════════
+// DROPDOWNS
+// ═══════════════════════════════════════════════════════════
+function onLabChange() {
+  const lab = v('f_lab');
+  setOpts('f_team', '<option value="">-- 선택 --</option>');
+  setOpts('f_category', '<option value="">-- 선택 --</option>');
+  setOpts('f_program', '<option value="">-- 선택 --</option>');
+  if (!lab || !DATA[lab]) return;
+  const opts = DATA[lab].teams.map(t => `<option value="${t}">${t}</option>`).join('');
+  setOpts('f_team', `<option value="">-- 선택 --</option>${opts}`);
+  if (DATA[lab].teams.length === 1) { document.getElementById('f_team').value = DATA[lab].teams[0]; onTeamChange(); }
+}
+
+function onTeamChange() {
+  const lab = v('f_lab'), team = v('f_team');
+  setOpts('f_category', '<option value="">-- 선택 --</option>');
+  setOpts('f_program', '<option value="">-- 선택 --</option>');
+  if (!lab || !team || !DATA[lab][team]) return;
+  const opts = DATA[lab][team].categories.map(c =>
+    `<option value="${c}" ${c==='복리후생비'?'style="color:#065f46;font-weight:700"':''}>${c}</option>`
+  ).join('');
+  setOpts('f_category', `<option value="">-- 선택 --</option>${opts}`);
+}
+
+function onCategoryChange() {
+  const lab = v('f_lab'), team = v('f_team'), cat = v('f_category');
+  setOpts('f_program', '<option value="">-- 선택사항 --</option>');
+  if (!lab || !team || !cat) return;
+  const progs = DATA[lab]?.[team]?.programs?.[cat] || [];
+  const opts = progs.map(p => `<option value="${p}">${p}</option>`).join('');
+  setOpts('f_program', `<option value="">-- 선택사항 --</option>${opts}`);
+}
+
+// ═══════════════════════════════════════════════════════════
+// FILE / CAMERA
+// ═══════════════════════════════════════════════════════════
+function onFileSelect(e) { const f = e.target.files[0]; if (f) loadFile(f); }
+function onDragOver(e) { e.preventDefault(); document.getElementById('dropZone').classList.add('over'); }
+function onDragLeave() { document.getElementById('dropZone').classList.remove('over'); }
+function onDrop(e) { e.preventDefault(); onDragLeave(); const f = e.dataTransfer.files[0]; if (f) loadFile(f); }
+
+function loadFile(file) {
+  currentFile = file;
+  currentMime = file.type || 'image/jpeg';
+  const reader = new FileReader();
+  reader.onload = e => {
+    currentB64 = e.target.result.split(',')[1];
+    showPreview(e.target.result);
+  };
+  reader.readAsDataURL(file);
+}
+
+function showPreview(dataUrl) {
+  document.getElementById('dropZone').style.display = 'none';
+  document.getElementById('previewWrap').style.display = 'block';
+  document.getElementById('previewImg').src = dataUrl;
+  document.getElementById('ocrBtn').disabled = false;
+  showOcrBar('idle', '🔍 자동 인식 버튼을 눌러 내용을 자동으로 채워드릴게요');
+}
+
+function clearImage() {
+  currentFile = null; currentB64 = null;
+  document.getElementById('dropZone').style.display = 'flex';
+  document.getElementById('previewWrap').style.display = 'none';
+  document.getElementById('ocrBtn').disabled = true;
+  document.getElementById('ocrBar').style.display = 'none';
+  document.getElementById('fileInput').value = '';
+}
+
+async function openCamera() {
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 } } });
+    document.getElementById('camVideo').srcObject = camStream;
+    document.getElementById('cameraModal').classList.add('show');
+  } catch(e) { alert('카메라 사용 불가: ' + e.message); }
+}
+
+function capturePhoto() {
+  const video = document.getElementById('camVideo');
+  const canvas = document.getElementById('camCanvas');
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  canvas.toBlob(blob => {
+    closeCamera();
+    const file = new File([blob], `receipt_${Date.now()}.jpg`, { type: 'image/jpeg' });
+    loadFile(file);
+  }, 'image/jpeg', 0.9);
+}
+
+function closeCamera() {
+  if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+  document.getElementById('cameraModal').classList.remove('show');
+}
+
+// ═══════════════════════════════════════════════════════════
+// OCR
+// ═══════════════════════════════════════════════════════════
+async function runOCR() {
+  const apiKey = ls('claude_key');
+  if (!apiKey) { openSettings(); return; }
+  if (!currentB64) return;
+
+  showOcrBar('loading', '');
+  document.getElementById('ocrBtn').disabled = true;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 512,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: currentMime, data: currentB64 } },
+            { type: 'text', text: `이 영수증에서 정보를 추출해 JSON으로만 답해. 다른 텍스트 없이 JSON만:
+{"date":"YYYY-MM-DD","amount":"숫자만","vendor":"상호명","description":"품목/내용 요약"}
+없는 항목은 null로.` }
+          ]
+        }]
+      })
+    });
+
+    if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || `HTTP ${res.status}`); }
+    const data = await res.json();
+    const raw = data.content[0].text.trim();
+    const match = raw.match(/\{[\s\S]*?\}/);
+    if (!match) throw new Error('응답 파싱 실패');
+    const p = JSON.parse(match[0]);
+
+    let filled = 0;
+    if (p.date)        { autofill('f_date', p.date); filled++; }
+    if (p.amount)      { autofill('f_amount', String(p.amount).replace(/[^0-9]/g,'')); filled++; }
+    if (p.vendor)      { autofill('f_vendor', p.vendor); filled++; }
+    if (p.description) { autofill('f_desc', p.description); filled++; }
+
+    showOcrBar('done', `✅ ${filled}개 항목 자동 입력 완료 — 나머지를 직접 선택해주세요`);
+  } catch(e) {
+    showOcrBar('err', '❌ ' + e.message);
+  }
+  document.getElementById('ocrBtn').disabled = false;
+}
+
+function showOcrBar(type, msg) {
+  const el = document.getElementById('ocrBar');
+  el.className = 'ocr-bar ' + type;
+  el.style.display = 'flex';
+  if (type === 'loading') {
+    el.innerHTML = '<div class="spin"></div> AI가 영수증을 분석 중...';
+  } else {
+    el.textContent = msg;
+  }
+}
+
+function autofill(id, val) {
+  const el = document.getElementById(id);
+  el.value = val;
+  el.classList.add('autofill');
+  el.addEventListener('input', () => el.classList.remove('autofill'), { once: true });
+}
+
+// ═══════════════════════════════════════════════════════════
+// SUBMIT
+// ═══════════════════════════════════════════════════════════
+async function submitReceipt() {
+  const date = v('f_date'), amount = v('f_amount'), vendor = v('f_vendor').trim();
+  const lab = v('f_lab'), team = v('f_team'), category = v('f_category');
+  if (!date || !amount || !vendor || !lab || !team || !category) {
+    alert('날짜, 금액, 가맹점, 실, 담당팀, 항목은 필수입니다.'); return;
+  }
+  if (!sb) { alert('먼저 Supabase 설정을 완료해주세요.'); openSettings(); return; }
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true; btn.textContent = '저장 중...';
+
+  try {
+    let image_url = null;
+
+    // 1. 이미지 업로드
+    if (currentFile) {
+      showProgress(30);
+      const ext = currentFile.name.split('.').pop() || 'jpg';
+      const path = `receipts/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const { error: upErr } = await sb.storage.from('receipts').upload(path, currentFile, { cacheControl: '3600', upsert: false });
+      if (upErr) throw upErr;
+      showProgress(70);
+      const { data: urlData } = sb.storage.from('receipts').getPublicUrl(path);
+      image_url = urlData.publicUrl;
+    }
+
+    showProgress(85);
+
+    // 2. DB 저장
+    const { error: dbErr } = await sb.from('receipts').insert([{
+      date, amount: parseInt(amount), vendor, lab, team, category,
+      program: v('f_program') || null,
+      description: v('f_desc').trim() || null,
+      note: v('f_note').trim() || null,
+      image_url
+    }]);
+    if (dbErr) throw dbErr;
+
+    showProgress(100);
+    setTimeout(() => { document.getElementById('progressWrap').style.display = 'none'; }, 500);
+
+    resetForm(); clearImage();
+    loadReceipts();
+  } catch(e) {
+    alert('저장 실패: ' + e.message);
+  }
+
+  btn.disabled = false; btn.textContent = '✓ 내역 등록';
+}
+
+function showProgress(pct) {
+  document.getElementById('progressWrap').style.display = 'block';
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+function resetForm() {
+  ['f_date','f_amount','f_vendor','f_lab','f_team','f_category','f_program','f_desc','f_note'].forEach(id => {
+    document.getElementById(id).value = id === 'f_date' ? today() : '';
+    document.getElementById(id).classList.remove('autofill');
+  });
+  setOpts('f_team', '<option value="">-- 실 선택 후 --</option>');
+  setOpts('f_category', '<option value="">-- 담당팀 선택 후 --</option>');
+  setOpts('f_program', '<option value="">-- 항목 선택 후 --</option>');
+}
+
+// ═══════════════════════════════════════════════════════════
+// TABLE
+// ═══════════════════════════════════════════════════════════
+async function loadReceipts() {
+  if (!sb) return;
+  const fLab = v('fLab'), fCat = v('fCat');
+  let q = sb.from('receipts').select('*').order('date', { ascending: false }).order('created_at', { ascending: false });
+  if (fLab) q = q.eq('lab', fLab);
+  if (fCat) q = q.eq('category', fCat);
+  const { data, error } = await q;
+  if (error) { console.error(error); return; }
+  renderTable(data || []);
+}
+
+function renderTable(rows) {
+  const tbody = document.getElementById('tBody');
+  const empty = document.getElementById('emptyState');
+  tbody.innerHTML = '';
+
+  const total = rows.reduce((s, r) => s + r.amount, 0);
+  document.getElementById('statCount').textContent = rows.length;
+  document.getElementById('statAmt').textContent = total.toLocaleString();
+
+  if (!rows.length) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+
+  rows.forEach(r => {
+    const isWelfare = r.category === '복리후생비';
+    const thumbHtml = r.image_url
+      ? `<img class="thumb" src="${r.image_url}" alt="영수증" onclick="openLightbox('${r.image_url}')">`
+      : `<div class="thumb-placeholder">🧾</div>`;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${thumbHtml}</td>
+      <td>${r.date}</td>
+      <td><strong>${esc(r.vendor)}</strong></td>
+      <td><span class="chip chip-blue">${esc(r.lab)}</span><br><small style="color:var(--muted)">${esc(r.team)}</small></td>
+      <td><span class="chip ${isWelfare ? 'chip-green' : 'chip-blue'}">${esc(r.category)}</span></td>
+      <td style="color:var(--muted)">${esc(r.program || '—')}</td>
+      <td>${esc(r.description || '—')}</td>
+      <td class="amt">${r.amount.toLocaleString()}원</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="deleteReceipt(${r.id},'${r.image_url || ''}')">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+async function deleteReceipt(id, imageUrl) {
+  if (!confirm('삭제하시겠습니까?')) return;
+  await sb.from('receipts').delete().eq('id', id);
+  if (imageUrl) {
+    const path = imageUrl.split('/receipts/')[1];
+    if (path) await sb.storage.from('receipts').remove([`receipts/${path}`]);
+  }
+  loadReceipts();
+}
+
+// ═══════════════════════════════════════════════════════════
+// LIGHTBOX
+// ═══════════════════════════════════════════════════════════
+function openLightbox(url) {
+  document.getElementById('lightboxImg').src = url;
+  document.getElementById('lightbox').classList.add('show');
+}
+function closeLightbox() { document.getElementById('lightbox').classList.remove('show'); }
+
+// ═══════════════════════════════════════════════════════════
+// CSV EXPORT
+// ═══════════════════════════════════════════════════════════
+async function exportCSV() {
+  if (!sb) { alert('Supabase 연결이 필요합니다.'); return; }
+  const { data } = await sb.from('receipts').select('*').order('date', { ascending: false });
+  if (!data?.length) { alert('내역이 없습니다.'); return; }
+  const headers = ['번호','날짜','가맹점','실','담당팀','항목','프로그램','내용','금액(원)','비고','영수증URL'];
+  const rows = data.map((r, i) => [i+1, r.date, r.vendor, r.lab, r.team, r.category, r.program||'', r.description||'', r.amount, r.note||'', r.image_url||'']);
+  const csv = '﻿' + [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = `법인카드_${today()}.csv`; a.click();
+}
+
+// ═══════════════════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════════════════
+const ls = key => localStorage.getItem(key);
+const lsSet = (k, v) => localStorage.setItem(k, v);
+const v = id => document.getElementById(id).value;
+const setOpts = (id, html) => { document.getElementById(id).innerHTML = html; };
+const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+// Close modals on overlay click
+['settingsModal','cameraModal'].forEach(id => {
+  document.getElementById(id).addEventListener('click', function(e) {
+    if (e.target === this) { if (id==='cameraModal') closeCamera(); else closeSettings(); }
+  });
+});
+</script>
+</body>
+</html>
