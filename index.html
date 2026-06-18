@@ -336,6 +336,15 @@ let currentFile=null, currentB64=null, currentMime='image/jpeg', camStream=null,
 
 // ─── INIT ─────────────────────────────────────────────────
 window.onload=()=>{
+  // URL 해시로 자동 설정 (예: #g=GEMINI_KEY&s=SCRIPT_URL)
+  if(location.hash){
+    try{
+      const p=new URLSearchParams(location.hash.slice(1));
+      if(p.get('g'))lsSet('gemini_key',p.get('g'));
+      if(p.get('s'))lsSet('script_url',decodeURIComponent(p.get('s')));
+      history.replaceState(null,'',location.pathname);
+    }catch(e){}
+  }
   document.getElementById('f_date').value=today();
   checkSettings();
 };
@@ -473,8 +482,8 @@ async function runOCR(){
   try{
     const isNewKey=key.startsWith('AQ.');
     const apiUrl=isNewKey
-      ?'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent'
-      :`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
+      ?'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
+      :`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
     const apiHeaders={'content-type':'application/json'};
     if(isNewKey)apiHeaders['x-goog-api-key']=key;
     const res=await fetch(apiUrl,{
