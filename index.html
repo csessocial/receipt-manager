@@ -471,9 +471,15 @@ async function runOCR(){
   showStatus('loading','');
   document.getElementById('ocrBtn').disabled=true;
   try{
-    const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`,{
+    const isNewKey=key.startsWith('AQ.');
+    const apiUrl=isNewKey
+      ?'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent'
+      :`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
+    const apiHeaders={'content-type':'application/json'};
+    if(isNewKey)apiHeaders['x-goog-api-key']=key;
+    const res=await fetch(apiUrl,{
       method:'POST',
-      headers:{'content-type':'application/json'},
+      headers:apiHeaders,
       body:JSON.stringify({contents:[{parts:[
         {inline_data:{mime_type:currentMime,data:currentB64}},
         {text:'이 영수증에서 정보를 추출해 JSON으로만 답해. 다른 텍스트 없이:\n{"date":"YYYY-MM-DD","amount":"숫자만","vendor":"상호명","description":"품목요약"}\n없는 항목은 null.'}
