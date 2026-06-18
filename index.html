@@ -480,12 +480,10 @@ async function runOCR(){
   showStatus('loading','');
   document.getElementById('ocrBtn').disabled=true;
   try{
-    const isNewKey=key.startsWith('AQ.');
-    const apiUrl=isNewKey
-      ?'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
-      :`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
     const apiHeaders={'content-type':'application/json'};
-    if(isNewKey)apiHeaders['x-goog-api-key']=key;
+    // AQ. 키는 x-goog-api-key 헤더 + URL파라미터 둘 다 시도
+    const apiUrl=`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(key)}`;
+    if(key.startsWith('AQ.'))apiHeaders['x-goog-api-key']=key;
     const res=await fetch(apiUrl,{
       method:'POST',
       headers:apiHeaders,
