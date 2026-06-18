@@ -2,8 +2,8 @@
 // 법인카드 영수증 관리 - Google Apps Script
 // ============================================================
 // 설정: 아래 두 값을 본인 것으로 교체하세요
-const FOLDER_ID = 'YOUR_DRIVE_FOLDER_ID';  // 드라이브 폴더 URL의 마지막 부분
-const SHEET_ID  = 'YOUR_SHEET_ID';          // 구글 시트 URL의 /d/ 뒤 부분
+const FOLDER_ID = '10e0PUtuw0HfG8sotx6IiueQbFHZeOBhE';
+const SHEET_ID  = '17h2ZJWsSbLsI4SDaxC8szKYIj07xwb28MEeFSFkgEJQ';
 
 // ============================================================
 // POST: 영수증 등록 / 삭제
