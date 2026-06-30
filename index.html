@@ -584,7 +584,7 @@ const DEFAULT_SCRIPT_URL='https://script.google.com/a/macros/cses.re.kr/s/AKfycb
 
 // ── INIT ─────────────────────────────────────────────────────
 window.onload=()=>{
-  if(!ls('script_url'))lsSet('script_url',DEFAULT_SCRIPT_URL);
+  lsSet('script_url',DEFAULT_SCRIPT_URL);
   if(location.hash){
     try{
       const p=new URLSearchParams(location.hash.slice(1));
