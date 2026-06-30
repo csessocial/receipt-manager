@@ -691,8 +691,10 @@ function showPrevPdf(name){
   document.getElementById('previewImg').style.display='none';
   document.getElementById('previewPdf').style.display='block';
   document.getElementById('previewPdfName').textContent=name;
-  // PDF는 OCR 미지원
-  document.getElementById('ocrBtn').style.display='none';
+  const ocrBtn=document.getElementById('ocrBtn');
+  ocrBtn.style.display='flex';ocrBtn.textContent='✨ AI 자동분석';ocrBtn.disabled=false;
+  if(ls('gemini_key'))runOCR();
+  else setOcrStatus('err','⚙ 설정에서 Gemini API 키를 입력해야 자동분석이 됩니다');
 }
 function clearImg(){
   curB64=null;curMime='image/jpeg';
