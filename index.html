@@ -87,19 +87,18 @@ html,body{height:100%;background:var(--bg);color:var(--t);font-family:'Apple SD 
 .card-body{padding:16px}
 
 /* ── PHOTO ── */
-.photo-drop{
+.pick-btns{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pick-btn{
   border:2px dashed var(--bd2);border-radius:14px;
-  min-height:160px;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;gap:6px;
-  text-align:center;padding:28px 20px;
-  position:relative;transition:all .2s;cursor:pointer;
-  background:var(--bg)
+  background:var(--bg);cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:4px;padding:22px 12px;font-family:inherit;
+  transition:all .2s;-webkit-appearance:none
 }
-.photo-drop:active{background:#e8eaf2;border-color:var(--p)}
-.photo-drop .drop-ico{font-size:40px;line-height:1}
-.photo-drop .drop-title{font-size:15px;font-weight:700;color:var(--t);margin-top:4px}
-.photo-drop .drop-sub{font-size:12px;color:var(--sub)}
-.photo-drop input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.pick-btn:active{background:#e8eaf2;border-color:var(--p)}
+.pick-ico{font-size:34px;line-height:1}
+.pick-label{font-size:14px;font-weight:700;color:var(--t);margin-top:2px}
+.pick-sub{font-size:10px;color:var(--lt);font-weight:500}
 
 .preview-box{position:relative;border-radius:12px;overflow:hidden;background:#000}
 .preview-box img{width:100%;max-height:260px;object-fit:contain;display:block;background:#111}
@@ -340,18 +339,31 @@ canvas{display:none}
       <div class="card-head">📸 영수증 사진 <span class="badge">구글 드라이브 자동저장</span></div>
       <div class="card-body">
 
-        <!-- 드롭존 (사진 없을 때) -->
-        <div class="photo-drop" id="photoArea">
-          <div class="drop-ico">📷</div>
-          <div class="drop-title">탭하여 촬영 또는 선택</div>
-          <div class="drop-sub">카메라 · 갤러리 · 파일</div>
-          <input type="file" accept="image/*" id="fileInput" onchange="onFile(event)">
+        <!-- 드롭존 (파일 없을 때) -->
+        <div id="photoArea">
+          <div class="pick-btns">
+            <button class="pick-btn" onclick="openCam()">
+              <span class="pick-ico">📷</span>
+              <span class="pick-label">카메라</span>
+            </button>
+            <button class="pick-btn" onclick="document.getElementById('fileInput').click()">
+              <span class="pick-ico">🖼</span>
+              <span class="pick-label">갤러리 / 파일</span>
+              <span class="pick-sub">JPG · PNG · PDF</span>
+            </button>
+          </div>
+          <input type="file" accept="image/jpeg,image/jpg,image/png,application/pdf" id="fileInput" onchange="onFile(event)" style="display:none">
         </div>
 
-        <!-- 프리뷰 (사진 있을 때) -->
+        <!-- 프리뷰 (파일 있을 때) -->
         <div id="previewWrap" style="display:none">
-          <div class="preview-box">
-            <img id="previewImg" src="" alt="영수증">
+          <div class="preview-box" id="previewBox">
+            <img id="previewImg" src="" alt="영수증" style="display:none">
+            <div id="previewPdf" style="display:none;padding:24px;text-align:center;color:var(--sub)">
+              <div style="font-size:48px">📄</div>
+              <div id="previewPdfName" style="font-size:13px;font-weight:600;margin-top:8px;word-break:break-all"></div>
+              <div style="font-size:11px;margin-top:4px;color:var(--lt)">PDF 파일</div>
+            </div>
           </div>
           <div class="preview-actions">
             <button class="preview-del-btn" onclick="clearImg()">🗑 다시 선택</button>
@@ -630,6 +642,15 @@ function setO(id,h){document.getElementById(id).innerHTML=h}
 function onFile(e){const f=e.target.files[0];if(f)loadImg(f)}
 function loadImg(file){
   curMime=file.type||'image/jpeg';
+  if(file.type==='application/pdf'){
+    const r=new FileReader();
+    r.onload=e=>{
+      curB64=e.target.result.split(',')[1];
+      showPrevPdf(file.name);
+    };
+    r.readAsDataURL(file);
+    return;
+  }
   compress(file).then(blob=>{
     const r=new FileReader();
     r.onload=e=>{curB64=e.target.result.split(',')[1];showPrev(e.target.result)};
@@ -652,13 +673,24 @@ function compress(file){
 function showPrev(src){
   document.getElementById('photoArea').style.display='none';
   document.getElementById('previewWrap').style.display='block';
+  document.getElementById('previewImg').style.display='block';
   document.getElementById('previewImg').src=src;
+  document.getElementById('previewPdf').style.display='none';
   const ocrBtn=document.getElementById('ocrBtn');
   if(ls('gemini_key')){ocrBtn.style.display='flex';ocrBtn.textContent='✨ AI 자동분석';ocrBtn.disabled=false;}
 }
+function showPrevPdf(name){
+  document.getElementById('photoArea').style.display='none';
+  document.getElementById('previewWrap').style.display='block';
+  document.getElementById('previewImg').style.display='none';
+  document.getElementById('previewPdf').style.display='block';
+  document.getElementById('previewPdfName').textContent=name;
+  // PDF는 OCR 미지원
+  document.getElementById('ocrBtn').style.display='none';
+}
 function clearImg(){
-  curB64=null;
-  document.getElementById('photoArea').style.display='flex';
+  curB64=null;curMime='image/jpeg';
+  document.getElementById('photoArea').style.display='block';
   document.getElementById('previewWrap').style.display='none';
   document.getElementById('previewImg').src='';
   document.getElementById('fileInput').value='';
