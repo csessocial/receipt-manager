@@ -579,8 +579,12 @@ const D={
 // ── STATE ────────────────────────────────────────────────────
 let curB64=null,curMime='image/jpeg',camStr=null,allRows=[];
 
+// ── 기본값 (팀 공용 — Apps Script URL 고정) ─────────────────
+const DEFAULT_SCRIPT_URL='https://script.google.com/a/macros/cses.re.kr/s/AKfycbyHlbXGzdv17BSmzzbnXLOQZ6OqeMy_liM_myr4q5SHfJEgfolmm7d_Rgq6HgYlnhee/exec';
+
 // ── INIT ─────────────────────────────────────────────────────
 window.onload=()=>{
+  if(!ls('script_url'))lsSet('script_url',DEFAULT_SCRIPT_URL);
   if(location.hash){
     try{
       const p=new URLSearchParams(location.hash.slice(1));
