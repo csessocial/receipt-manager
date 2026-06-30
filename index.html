@@ -377,6 +377,7 @@ canvas{display:none}
     <!-- 폼 카드 -->
     <div class="card">
       <div class="card-head">✏️ 제출 정보</div>
+      <div id="ocrStatus" style="display:none;padding:10px 16px;font-size:13px;font-weight:600;border-bottom:1px solid var(--bd)"></div>
       <div class="card-body">
 
         <div class="two-col">
@@ -698,13 +699,29 @@ function clearImg(){
 }
 
 // ── OCR ──────────────────────────────────────────────────────
+function setOcrStatus(type, msg){
+  const el=document.getElementById('ocrStatus');
+  const styles={
+    loading:'background:#eef0fd;color:#4361ee',
+    ok:'background:#ecfdf5;color:#065f46',
+    err:'background:#fef2f2;color:#b91c1c',
+    none:'display:none'
+  };
+  if(type==='none'){el.style.display='none';return}
+  el.style.cssText='display:block;padding:10px 16px;font-size:13px;font-weight:600;border-bottom:1px solid var(--bd);'+styles[type];
+  el.textContent=msg;
+}
+
 async function runOCR(){
   const key=ls('gemini_key');
-  if(!key){alert('설정에서 Gemini API 키를 먼저 입력해주세요.');openSettings();return}
-  if(!curB64){alert('영수증 사진을 먼저 선택해주세요.');return}
+  if(!key){
+    setOcrStatus('err','⚙ 설정에서 Gemini API 키를 입력해야 자동분석이 됩니다');
+    return;
+  }
+  if(!curB64)return;
   const btn=document.getElementById('ocrBtn');
-  btn.disabled=true;btn.textContent='✨ 분석 중...';
-  showLoad('AI가 영수증을 분석 중입니다...');
+  btn.disabled=true;btn.textContent='분석 중...';
+  setOcrStatus('loading','✨ AI가 영수증을 읽는 중...');
   try{
     const prompt=`이 영수증 이미지를 분석해서 아래 JSON 형식으로만 응답하세요. 다른 텍스트 없이 JSON만:
 {"date":"YYYY-MM-DD","amount":숫자,"vendor":"결제처명","purpose":"구매목적 또는 품목"}
@@ -712,24 +729,27 @@ async function runOCR(){
     const endpoint='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
     const body={contents:[{parts:[{text:prompt},{inline_data:{mime_type:curMime,data:curB64}}]}]};
     const res=await fetch(endpoint+'?key='+encodeURIComponent(key),{
-      method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify(body)
     });
-    if(!res.ok){const e=await res.text();throw new Error('API '+res.status+': '+e.slice(0,200))}
     const json=await res.json();
+    if(!res.ok){
+      const errMsg=json?.error?.message||res.status;
+      throw new Error(String(errMsg));
+    }
     const text=(json.candidates?.[0]?.content?.parts?.[0]?.text||'').trim();
     const parsed=JSON.parse(text.replace(/```json\n?/g,'').replace(/```/g,'').trim());
     if(parsed.date)document.getElementById('f_date').value=parsed.date;
     if(parsed.amount)document.getElementById('f_amount').value=parsed.amount;
     if(parsed.vendor)document.getElementById('f_vendor').value=parsed.vendor;
     if(parsed.purpose)document.getElementById('f_purpose').value=parsed.purpose;
-    hideLoad();
-    btn.textContent='✅ 분석 완료';
-    setTimeout(()=>{btn.textContent='✨ 다시 분석';btn.disabled=false},2500);
+    const filled=[parsed.date,parsed.amount,parsed.vendor,parsed.purpose].filter(Boolean);
+    setOcrStatus('ok','✅ 자동입력 완료 — 내용 확인 후 필요한 항목 수정해주세요');
+    btn.textContent='✨ 다시 분석';btn.disabled=false;
   }catch(e){
-    hideLoad();
-    btn.textContent='✨ AI 자동분석';btn.disabled=false;
-    alert('AI 분석 실패: '+e.message);
+    setOcrStatus('err','❌ 분석 실패: '+e.message);
+    btn.textContent='✨ 다시 분석';btn.disabled=false;
   }
 }
 
