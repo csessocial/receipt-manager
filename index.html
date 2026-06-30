@@ -710,8 +710,7 @@ function setOcrStatus(type, msg){
   const styles={
     loading:'background:#eef0fd;color:#4361ee',
     ok:'background:#ecfdf5;color:#065f46',
-    err:'background:#fef2f2;color:#b91c1c',
-    none:'display:none'
+    err:'background:#fef2f2;color:#b91c1c'
   };
   if(type==='none'){el.style.display='none';return}
   el.style.cssText='display:block;padding:10px 16px;font-size:13px;font-weight:600;border-bottom:1px solid var(--bd);'+styles[type];
@@ -719,39 +718,26 @@ function setOcrStatus(type, msg){
 }
 
 async function runOCR(){
-  const key=ls('gemini_key');
-  if(!key){
-    setOcrStatus('err','⚙ 설정에서 Gemini API 키를 입력해야 자동분석이 됩니다');
-    return;
-  }
   if(!curB64)return;
+  const url=ls('script_url');
+  if(!url)return;
   const btn=document.getElementById('ocrBtn');
   btn.disabled=true;btn.textContent='분석 중...';
-  setOcrStatus('loading','✨ AI가 영수증을 읽는 중...');
+  setOcrStatus('loading','✨ 영수증을 읽는 중...');
   try{
-    const prompt=`이 영수증 이미지를 분석해서 아래 JSON 형식으로만 응답하세요. 다른 텍스트 없이 JSON만:
-{"date":"YYYY-MM-DD","amount":숫자,"vendor":"결제처명","purpose":"구매목적 또는 품목"}
-날짜가 없으면 오늘 날짜, 금액이 없으면 0, 확실하지 않으면 빈 문자열.`;
-    const endpoint='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
-    const body={contents:[{parts:[{text:prompt},{inline_data:{mime_type:curMime,data:curB64}}]}]};
-    const res=await fetch(endpoint+'?key='+encodeURIComponent(key),{
+    const res=await fetch(url,{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(body)
+      headers:{'Content-Type':'text/plain'},
+      body:JSON.stringify({action:'ocr',image:curB64,mimeType:curMime})
     });
-    const json=await res.json();
-    if(!res.ok){
-      const errMsg=json?.error?.message||res.status;
-      throw new Error(String(errMsg));
-    }
-    const text=(json.candidates?.[0]?.content?.parts?.[0]?.text||'').trim();
-    const parsed=JSON.parse(text.replace(/```json\n?/g,'').replace(/```/g,'').trim());
-    if(parsed.date)document.getElementById('f_date').value=parsed.date;
-    if(parsed.amount)document.getElementById('f_amount').value=parsed.amount;
-    if(parsed.vendor)document.getElementById('f_vendor').value=parsed.vendor;
-    if(parsed.purpose)document.getElementById('f_purpose').value=parsed.purpose;
-    const filled=[parsed.date,parsed.amount,parsed.vendor,parsed.purpose].filter(Boolean);
-    setOcrStatus('ok','✅ 자동입력 완료 — 내용 확인 후 필요한 항목 수정해주세요');
+    const r=await res.json();
+    if(!r.success)throw new Error(r.error||'OCR 실패');
+    const p=r.parsed;
+    if(p.date)document.getElementById('f_date').value=p.date;
+    if(p.amount)document.getElementById('f_amount').value=p.amount;
+    if(p.vendor)document.getElementById('f_vendor').value=p.vendor;
+    if(p.purpose)document.getElementById('f_purpose').value=p.purpose;
+    setOcrStatus('ok','✅ 자동입력 완료 — 내용 확인 후 수정해주세요');
     btn.textContent='✨ 다시 분석';btn.disabled=false;
   }catch(e){
     setOcrStatus('err','❌ 분석 실패: '+e.message);

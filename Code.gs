@@ -5,12 +5,68 @@ function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
     if (data.action === 'delete') return deleteRow(data.id);
+    if (data.action === 'ocr')   return ocrImage(data);
     return insertRow(data);
   } catch (err) {
     return respond({ success: false, error: err.message });
   }
 }
 
+// ── OCR: 드라이브 구글독스 변환으로 텍스트 추출 ─────────────
+function ocrImage(data) {
+  try {
+    const bytes = Utilities.base64Decode(data.image);
+    const blob  = Utilities.newBlob(bytes, data.mimeType || 'image/jpeg', 'ocr_temp.jpg');
+
+    // 구글 드라이브에 구글독스로 변환해서 업로드 (OCR 자동 적용)
+    const folder  = DriveApp.getFolderById(FOLDER_ID);
+    const resource = { title: 'ocr_temp', mimeType: MimeType.GOOGLE_DOCS, parents: [{ id: folder.getId() }] };
+    const file    = Drive.Files.insert(resource, blob, { convert: true, ocr: true, ocrLanguage: 'ko' });
+
+    // 텍스트 추출
+    const doc  = DocumentApp.openById(file.id);
+    const text = doc.getBody().getText();
+
+    // 임시 파일 삭제
+    DriveApp.getFileById(file.id).setTrashed(true);
+
+    // 텍스트 파싱
+    const parsed = parseReceiptText(text);
+    return respond({ success: true, text: text, parsed: parsed });
+  } catch (err) {
+    return respond({ success: false, error: err.message });
+  }
+}
+
+// ── 영수증 텍스트 파싱 ───────────────────────────────────────
+function parseReceiptText(text) {
+  const result = { date: '', amount: 0, vendor: '', purpose: '' };
+  if (!text) return result;
+
+  // 날짜: 2026.06.25 / 2026-06-25 / 26.06.25 / 06/25
+  const dateMatch = text.match(/(\d{2,4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
+  if (dateMatch) {
+    let y = dateMatch[1], m = dateMatch[2].padStart(2,'0'), d = dateMatch[3].padStart(2,'0');
+    if (y.length === 2) y = '20' + y;
+    result.date = `${y}-${m}-${d}`;
+  }
+
+  // 금액: 숫자+원, 콤마 포함
+  const amounts = [...text.matchAll(/[\d,]+\s*원/g)].map(m => parseInt(m[0].replace(/[,원\s]/g,'')));
+  if (amounts.length) result.amount = Math.max(...amounts);  // 가장 큰 금액
+
+  // 결제처: 첫 번째 줄 또는 상호 키워드 뒤
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length) result.vendor = lines[0].slice(0, 30);
+
+  // 품목: '품목', '상품명', '내용' 키워드 뒤
+  const purposeMatch = text.match(/(?:품목|상품명|내용|품명)\s*[:\s]\s*(.+)/);
+  if (purposeMatch) result.purpose = purposeMatch[1].trim().slice(0, 50);
+
+  return result;
+}
+
+// ── 영수증 저장 ──────────────────────────────────────────────
 function insertRow(data) {
   let imageUrl = '';
   if (data.image) {
