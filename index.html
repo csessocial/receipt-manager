@@ -167,6 +167,9 @@ canvas{display:none}
           <button class="btn btn-o" onclick="document.getElementById('fileInput').click()">📁 파일 선택</button>
           <button class="btn btn-o" onclick="openCam()">📷 카메라</button>
         </div>
+        <div id="ocrWrap" style="display:none;margin-top:10px">
+          <button class="btn btn-p btn-full" id="ocrBtn" onclick="runOCR()">✨ 자동 분석 (AI)</button>
+        </div>
       </div>
     </div>
 
@@ -261,18 +264,23 @@ canvas{display:none}
 <div class="overlay" id="settingsOvl">
   <div class="sheet">
     <div class="handle"></div>
-    <h2>⚙ Apps Script 연결</h2>
-    <p>영수증이 구글 시트 + 드라이브에 저장됩니다</p>
+    <h2>⚙ 설정</h2>
+    <p>앱 연결 정보를 입력하세요</p>
     <div class="fg">
       <label>Apps Script 웹앱 URL</label>
       <input type="text" id="inp_url" placeholder="https://script.google.com/macros/s/.../exec" inputmode="url">
+    </div>
+    <div class="fg" style="margin-top:10px">
+      <label>Gemini API 키 <span style="font-weight:400;color:var(--lt)">(선택 — AI 자동분석용)</span></label>
+      <input type="text" id="inp_gkey" placeholder="AQ. 또는 AIzaSy...">
     </div>
     <div class="hint-box">
       <strong>설정 방법</strong><br>
       1. 구글 드라이브에 영수증 폴더 생성<br>
       2. 구글 시트 생성 → 확장 프로그램 → Apps Script<br>
       3. Code.gs 붙여넣기 → setup 실행<br>
-      4. 배포 → 웹 앱 → 모든 사용자 → URL 복사
+      4. 배포 → 웹 앱 → 모든 사용자 → URL 복사<br>
+      5. (선택) aistudio.google.com → API 키 발급 → AI 분석 활성화
     </div>
     <div class="sheet-foot">
       <button class="btn btn-gh" style="flex:1" onclick="closeSettings()">취소</button>
@@ -399,6 +407,9 @@ function showPrev(src){
   document.getElementById('previewWrap').style.display='block';
   document.getElementById('previewImg').src=src;
   document.getElementById('camBtns').style.display='none';
+  document.getElementById('ocrBtn').textContent='✨ 자동 분석 (AI)';
+  document.getElementById('ocrBtn').disabled=false;
+  document.getElementById('ocrWrap').style.display=ls('gemini_key')?'block':'none';
 }
 function clearImg(){
   curFile=null;curB64=null;
@@ -406,6 +417,7 @@ function clearImg(){
   document.getElementById('photoArea').classList.remove('has-img');
   document.getElementById('previewWrap').style.display='none';
   document.getElementById('camBtns').style.display='grid';
+  document.getElementById('ocrWrap').style.display='none';
   document.getElementById('fileInput').value='';
 }
 
@@ -516,10 +528,57 @@ function showLoad(m){document.getElementById('loadMsg').textContent=m;document.g
 function hideLoad(){document.getElementById('loadEl').classList.remove('show')}
 function showToast(){const t=document.getElementById('toast');t.classList.remove('show');void t.offsetWidth;t.classList.add('show')}
 
+// ─── OCR ───────────────────────────────────────────────────
+async function runOCR(){
+  const key=ls('gemini_key');
+  if(!key){alert('설정에서 Gemini API 키를 먼저 입력해주세요.');openSettings();return}
+  if(!curB64){alert('영수증 사진을 먼저 선택해주세요.');return}
+  document.getElementById('ocrBtn').disabled=true;
+  document.getElementById('ocrBtn').textContent='✨ 분석 중...';
+  showLoad('AI가 영수증을 분석 중입니다...');
+  try{
+    const prompt=`이 영수증 이미지를 분석해서 아래 JSON 형식으로만 응답하세요. 다른 텍스트 없이 JSON만:
+{"date":"YYYY-MM-DD","amount":숫자,"vendor":"결제처명","purpose":"구매목적 또는 품목"}
+날짜가 없으면 오늘 날짜, 금액이 없으면 0, 확실하지 않은 항목은 빈 문자열로.`;
+    const endpoint='https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+    const headers={'Content-Type':'application/json'};
+    if(key.startsWith('AQ.')){headers['x-goog-api-key']=key}else{headers['x-goog-api-key']=key}
+    const body={contents:[{parts:[{text:prompt},{inline_data:{mime_type:curMime,data:curB64}}]}]};
+    const res=await fetch(endpoint+'?key='+encodeURIComponent(key),{method:'POST',headers,body:JSON.stringify(body)});
+    if(!res.ok){const e=await res.text();throw new Error('API 오류: '+res.status+' '+e.slice(0,200))}
+    const json=await res.json();
+    const text=(json.candidates?.[0]?.content?.parts?.[0]?.text||'').trim();
+    const cleaned=text.replace(/```json\n?/g,'').replace(/```/g,'').trim();
+    const parsed=JSON.parse(cleaned);
+    if(parsed.date)document.getElementById('f_date').value=parsed.date;
+    if(parsed.amount)document.getElementById('f_amount').value=parsed.amount;
+    if(parsed.vendor)document.getElementById('f_vendor').value=parsed.vendor;
+    if(parsed.purpose)document.getElementById('f_purpose').value=parsed.purpose;
+    hideLoad();
+    document.getElementById('ocrBtn').textContent='✅ 분석 완료!';
+    setTimeout(()=>{document.getElementById('ocrBtn').textContent='✨ 다시 분석';document.getElementById('ocrBtn').disabled=false},2000);
+  }catch(e){
+    hideLoad();
+    document.getElementById('ocrBtn').textContent='✨ 자동 분석 (AI)';
+    document.getElementById('ocrBtn').disabled=false;
+    alert('AI 분석 실패: '+e.message+'\n\nAPI 키를 확인하거나 직접 입력해주세요.');
+  }
+}
+
 // ─── SETTINGS ──────────────────────────────────────────────
-function openSettings(){document.getElementById('inp_url').value=ls('script_url');document.getElementById('settingsOvl').classList.add('show')}
+function openSettings(){
+  document.getElementById('inp_url').value=ls('script_url');
+  document.getElementById('inp_gkey').value=ls('gemini_key');
+  document.getElementById('settingsOvl').classList.add('show');
+}
 function closeSettings(){document.getElementById('settingsOvl').classList.remove('show')}
-function saveSettings(){const u=document.getElementById('inp_url').value.trim();if(u)lsSet('script_url',u);closeSettings();checkConn();alert('저장됐습니다!')}
+function saveSettings(){
+  const u=document.getElementById('inp_url').value.trim();
+  const g=document.getElementById('inp_gkey').value.trim();
+  if(u)lsSet('script_url',u);
+  if(g)lsSet('gemini_key',g);
+  closeSettings();checkConn();alert('저장됐습니다!');
+}
 
 // ─── OVERLAYS ──────────────────────────────────────────────
 ['settingsOvl','camOvl'].forEach(id=>{document.getElementById(id).addEventListener('click',function(e){if(e.target===this){if(id==='camOvl')closeCam();else closeSettings()}})});
