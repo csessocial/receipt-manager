@@ -677,7 +677,8 @@ function showPrev(src){
   document.getElementById('previewImg').src=src;
   document.getElementById('previewPdf').style.display='none';
   const ocrBtn=document.getElementById('ocrBtn');
-  if(ls('gemini_key')){ocrBtn.style.display='flex';ocrBtn.textContent='✨ AI 자동분석';ocrBtn.disabled=false;}
+  ocrBtn.style.display='flex';ocrBtn.textContent='✨ AI 자동분석';ocrBtn.disabled=false;
+  if(ls('gemini_key'))runOCR();
 }
 function showPrevPdf(name){
   document.getElementById('photoArea').style.display='none';
